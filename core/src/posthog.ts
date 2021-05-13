@@ -302,4 +302,39 @@ export module PostHog {
 			}
 		}
 	}
+
+	export const sentry_integration = function (_posthog: Client, organization: string, projectId: Number, prefix: string) {
+		// setupOnce gets called by Sentry when it intializes the plugin
+		this.setupOnce = function (addGlobalEventProcessor) {
+			addGlobalEventProcessor((event) => {
+				if (event.level !== 'error' || !_posthog.__loaded) {
+					return event
+				}
+
+				if (!event.tags) {
+					event.tags = {} 
+				}
+
+				event.tags['PostHog URL'] = _posthog.config.api_host + '/person/' + _posthog.get_distinct_id()
+				
+				let data = {
+					$sentry_event_id: event.event_id,
+					$sentry_exception: event.exception,
+				}
+
+				if (organization && projectId) {
+					data['$sentry_url'] =
+						(prefix || 'https://sentry.io/organizations/') +
+						organization +
+						'/issues/?project=' +
+						projectId +
+						'&query=' +
+						event.event_id
+				}
+				_posthog.capture('$exception', data)
+				
+				return event
+			})
+		}
+	}
 }
